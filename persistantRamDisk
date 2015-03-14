@@ -26,16 +26,17 @@
 # (at your option) any later version.
 
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
-#NAME_LOG=transientlog
-#DESC_LOG="Transient log directory"
-#LOCKFILE_LOG=/var/lock/$NAME.lock
-#VARLOG=/var/log
-#SIZE_LOG=16M
-#MODE_LOG=0755
+
 NAME_RAMDISK=persistentRAMDISK
-NAME_FIREFOX=firefoxProfile
 DESC_RAMDISK="Persistent RAMDisk manager"
-LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.lock
+LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.loc
+
+NAME_LOG=transientlog
+VARLOG=/var/log
+SIZE_LOG=500M
+MODE_LOG=0755
+
+NAME_FIREFOX=firefoxProfilek
 FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
 SIZE_FIREFOX=1500M
 MODE_FIREFOX=0700
@@ -57,6 +58,13 @@ if [ -z "$FIREFOXPERM" ]; then
 	unset firefox_dir firefox_name
 fi
 
+if [ -z "$VARLOGPERM" ]; then
+	varlog_dir=`dirname $VARLOG`
+	varlog_name=`basename $VARLOG`
+	VARLOGPERM="$varlog_dir/permanent$varlog_name"
+	unset varlog_dir varlog_name
+fi
+
 
 do_start()
 {
@@ -70,41 +78,46 @@ do_start()
 	# Check if I'm root
 	[ `id -u` -eq 0 ] || return 2
 
-	# If VARLOG does not exist?
+	# If VARLOG or FIREFOX does not exist?
 	[ -d $FIREFOX ] || return 2
+        [ -d $VARLOG ] || return 2
 
-	# VARLOGPERM either does not exist (first invocation)
+	# VARLOGPERM or FIREFOXPERM either does not exist (first invocation)
 	# or is empty (left from previous invocation).
 	#
 	[ -d $FIREFOXPERM ] || mkdir -p $FIREFOXPERM || return 2
+        [ -d $VARLOGPERM ] || mkdir -p $VARLOGPERM || return 2
 
-	# Mount a tmpfs over VARLOG.
-	# The mount will shadow the current contents of VARLOG.
-	# So, before, make a bind mount so that looking into VARLOGPERM
-	# we'll see the current contents of VARLOG, which
-	# will not be available anymore as soon as we mount
-	# a tmpfs over it.
+	# Mount a tmpfs over VARLOG and FIREFOX.
+	# The mount will shadow the current contents of VARLOG and FIREFOX.
+	# So, before, make a bind mount so that looking into VARLOGPERM and FIREFOXPERM
+	# we'll see the current contents of VARLOG and FIREFOX, which
+	# will not be available anymore as soon as we mount a tmpfs over it.
 	#
 	mount --bind $FIREFOX $FIREFOXPERM
-	#mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
+        mount --bind $VARLOG $VARLOGPERM
+
         mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_FIREFOX,size=$SIZE_FIREFOX $NAME_FIREFOX $FIREFOX
+        mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
+
 	if [ $? -eq 0 ]; then
-		# Populate the tmpfs
-		if cp -rfp $FIREFOXPERM -T $FIREFOX; then
-			# Success!
-			touch $LOCKFILE_RAMDISK
-                        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched from HD at Boot>> /var/log/ramdisk_sync.log
-			return 0
+		# Populate the FIREFOX's tmpfs
+		if ( cp -rfp $FIREFOXPERM -T $FIREFOX ) && ( cp -rfp $VARLOGPERM -T $VARLOG ); then
+	                # Success!
+                        touch $LOCKFILE_RAMDISK
+                        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched from HD at Boot>> $VARLOG/ramdisk_sync.log
+                        return 0
 		fi
 
-		# Something went wrong...
-
-		# Rollback the mount
+		# Something went wrong... Rollback the mount
 		umount -l $FIREFOX
+                umount -l $VARLOG
+
 	fi
 
 	# Rollback the directory mangling
 	umount $FIREFOXPERM
+        umount $VARLOGPERM
 
 	return 2
 }
@@ -123,11 +136,15 @@ do_stop() {
 
 	# Merge back to permanent storage
 	cp -rfup $FIREFOX -T $FIREFOXPERM
-        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched To HD at Shutdown>> /var/log/ramdisk_sync.log
+        cp -rfup $VARLOG -T $VARLOGPERM
+        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Shutdown>> $VARLOGPERM/ramdisk_sync.log
+     
 
 	# The following cannot fail... or can it?
 	umount -l $FIREFOX
 	umount -l $FIREFOXPERM
+        umount -l $VARLOG
+	umount -l $VARLOGPERM
 	rm -f $LOCKFILE_RAMDISK
 	return 0
 }
@@ -145,7 +162,9 @@ do_reload() {
 
 	# Merge back to permanent storage
 	cp -rfup $FIREFOX -T $FIREFOXPERM
-        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched To HD at Backup>> /var/log/ramdisk_sync.log
+        cp -rfup $VARLOG -T $VARLOGPERM
+        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Backup>> $VARLOG/ramdisk_sync.log 
+        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Backup>> $VARLOGPERM/ramdisk_sync.log
 
 	touch $LOCKFILE_RAMDISK
 	return 0
