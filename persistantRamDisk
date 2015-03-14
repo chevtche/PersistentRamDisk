@@ -29,14 +29,14 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
 NAME_RAMDISK=persistentRAMDISK
 DESC_RAMDISK="Persistent RAMDisk manager"
-LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.loc
+LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.lock
 
 NAME_LOG=transientlog
 VARLOG=/var/log
 SIZE_LOG=500M
 MODE_LOG=0755
 
-NAME_FIREFOX=firefoxProfilek
+NAME_FIREFOX=firefoxProfile
 FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
 SIZE_FIREFOX=1500M
 MODE_FIREFOX=0700
@@ -69,9 +69,9 @@ fi
 do_start()
 {
 	# Return
-	#   0 if transient log has been started
-	#   1 if transient log was already running
-	#   2 if transient log could not be started
+	#   0 if persistentRAMDISK has been started
+	#   1 if persistentRAMDISK was already running
+	#   2 if persistentRAMDISK could not be started
 
 	[ -f $LOCKFILE_RAMDISK ] && return 1
 
@@ -101,11 +101,11 @@ do_start()
         mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
 
 	if [ $? -eq 0 ]; then
-		# Populate the FIREFOX's tmpfs
+		# Populate the FIREFOX's and VARLOG's tmpfs
 		if ( cp -rfp $FIREFOXPERM -T $FIREFOX ) && ( cp -rfp $VARLOGPERM -T $VARLOG ); then
 	                # Success!
                         touch $LOCKFILE_RAMDISK
-                        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched from HD at Boot>> $VARLOG/ramdisk_sync.log
+                        echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To RAM at Boot>> $VARLOG/ramdisk_sync.log
                         return 0
 		fi
 
@@ -135,8 +135,8 @@ do_stop() {
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-	cp -rfup $FIREFOX -T $FIREFOXPERM
-        cp -rfup $VARLOG -T $VARLOGPERM
+        rsync -a --quiet --delete --recursive --force $FIREFOX/ $FIREFOXPERM/
+        rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
         echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Shutdown>> $VARLOGPERM/ramdisk_sync.log
      
 
@@ -151,9 +151,9 @@ do_stop() {
 
 do_reload() {
 	# Return
-	#   0 if transient log has been reloaded
-	#   1 if transient log was not running
-	#   2 if transient log could not be reloaded
+	#   0 if persistentRAMDISK has been reloaded
+	#   1 if persistentRAMDISK was not running
+	#   2 if persistentRAMDISK could not be reloaded
 
 	[ -f $LOCKFILE_RAMDISK ] || return 1
 
@@ -161,8 +161,8 @@ do_reload() {
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-	cp -rfup $FIREFOX -T $FIREFOXPERM
-        cp -rfup $VARLOG -T $VARLOGPERM
+        rsync -a --quiet --delete --recursive --force $FIREFOX/ $FIREFOXPERM/
+        rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
         echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Backup>> $VARLOG/ramdisk_sync.log 
         echo [`date +"%Y-%m-%d %H:%M"`] Firefox and VarLog Ramdisk Synched To HD at Backup>> $VARLOGPERM/ramdisk_sync.log
 
