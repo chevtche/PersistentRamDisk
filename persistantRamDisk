@@ -32,15 +32,16 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin
 #VARLOG=/var/log
 #SIZE_LOG=16M
 #MODE_LOG=0755
-NAME_LOG=firefoxProfile
-DESC_LOG="Firefox profile directory"
-LOCKFILE_LOG=/var/lock/$NAME.lock
-VARLOG=/home/greg/.mozilla/firefox/8prktwm1.default
-SIZE_LOG=1500M
-MODE_LOG=0700
+NAME_RAMDISK=persistentRAMDISK
+NAME_FIREFOX=firefoxProfile
+DESC_RAMDISK="Persistent RAMDisk manager"
+LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.lock
+FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
+SIZE_FIREFOX=1500M
+MODE_FIREFOX=0700
 
 # Read configuration variable file if it is present
-[ -r /etc/default/$NAME_LOG ] && . /etc/default/$NAME_LOG
+[ -r /etc/default/$NAME_RAMDISK ] && . /etc/default/$NAME_RAMDISK
 
 # Load the VERBOSE setting and other rcS variables
 . /lib/init/vars.sh
@@ -49,11 +50,11 @@ MODE_LOG=0700
 # Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
 . /lib/lsb/init-functions
 
-if [ -z "$VARLOGPERM" ]; then
-	var=`dirname $VARLOG`
-	log=`basename $VARLOG`
-	VARLOGPERM="$var/permanent$log"
-	unset var log
+if [ -z "$FIREFOXPERM" ]; then
+	firefox_dir=`dirname $FIREFOX`
+	firefox_name=`basename $FIREFOX`
+	FIREFOXPERM="$firefox_dir/permanent$firefox_name"
+	unset firefox_dir firefox_name
 fi
 
 
@@ -64,18 +65,18 @@ do_start()
 	#   1 if transient log was already running
 	#   2 if transient log could not be started
 
-	[ -f $LOCKFILE_LOG ] && return 1
+	[ -f $LOCKFILE_RAMDISK ] && return 1
 
 	# Check if I'm root
 	[ `id -u` -eq 0 ] || return 2
 
 	# If VARLOG does not exist?
-	[ -d $VARLOG ] || return 2
+	[ -d $FIREFOX ] || return 2
 
 	# VARLOGPERM either does not exist (first invocation)
 	# or is empty (left from previous invocation).
 	#
-	[ -d $VARLOGPERM ] || mkdir -p $VARLOGPERM || return 2
+	[ -d $FIREFOXPERM ] || mkdir -p $FIREFOXPERM || return 2
 
 	# Mount a tmpfs over VARLOG.
 	# The mount will shadow the current contents of VARLOG.
@@ -84,26 +85,26 @@ do_start()
 	# will not be available anymore as soon as we mount
 	# a tmpfs over it.
 	#
-	mount --bind $VARLOG $VARLOGPERM
+	mount --bind $FIREFOX $FIREFOXPERM
 	#mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
-        mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
+        mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_FIREFOX,size=$SIZE_FIREFOX $NAME_FIREFOX $FIREFOX
 	if [ $? -eq 0 ]; then
 		# Populate the tmpfs
-		if cp -rfp $VARLOGPERM -T $VARLOG; then
+		if cp -rfp $FIREFOXPERM -T $FIREFOX; then
 			# Success!
-			touch $LOCKFILE_LOG
-                        echo [`date +"%Y-%m-%d %H:%M"`] Ramdisk Synched from HD at Boot>> /var/log/ramdisk_sync.log
+			touch $LOCKFILE_RAMDISK
+                        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched from HD at Boot>> /var/log/ramdisk_sync.log
 			return 0
 		fi
 
 		# Something went wrong...
 
 		# Rollback the mount
-		umount -l $VARLOG
+		umount -l $FIREFOX
 	fi
 
 	# Rollback the directory mangling
-	umount $VARLOGPERM
+	umount $FIREFOXPERM
 
 	return 2
 }
@@ -115,26 +116,19 @@ do_stop() {
 	#   2 if daemon could not be stopped
 	#   other if a failure occurred
 
-        #echo Trying to Synch To HD at Shutdown>> /var/log/ramdisk_sync.log
-
-	[ -f $LOCKFILE_LOG ] || return 1
-
-        #echo Lock Ok>> /var/log/ramdisk_sync.log
+	[ -f $LOCKFILE_RAMDISK ] || return 1
 
 	# Check if I am root
 	[ `id -u` -eq 0 ] || return 2
 
-        #echo I am Root>> /var/log/ramdisk_sync.log
-
 	# Merge back to permanent storage
-	cp -rfup $VARLOG -T $VARLOGPERM
-        #rsync -a --quiet --delete --recursive --force $VARLOG $VARLOGPERM
-        echo [`date +"%Y-%m-%d %H:%M"`] Ramdisk Synched To HD at Shutdown>> /var/log/ramdisk_sync.log
+	cp -rfup $FIREFOX -T $FIREFOXPERM
+        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched To HD at Shutdown>> /var/log/ramdisk_sync.log
 
 	# The following cannot fail... or can it?
-	umount -l $VARLOG
-	umount -l $VARLOGPERM
-	rm -f $LOCKFILE_LOG
+	umount -l $FIREFOX
+	umount -l $FIREFOXPERM
+	rm -f $LOCKFILE_RAMDISK
 	return 0
 }
 
@@ -144,17 +138,16 @@ do_reload() {
 	#   1 if transient log was not running
 	#   2 if transient log could not be reloaded
 
-	[ -f $LOCKFILE_LOG ] || return 1
+	[ -f $LOCKFILE_RAMDISK ] || return 1
 
 	# Check if I am root
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-	cp -rfup $VARLOG -T $VARLOGPERM
-        #rsync -a --quiet --delete --recursive --force $VARLOG $VARLOGPERM
-        echo [`date +"%Y-%m-%d %H:%M"`] Ramdisk Synched To HD at Backup>> /var/log/ramdisk_sync.log
+	cp -rfup $FIREFOX -T $FIREFOXPERM
+        echo [`date +"%Y-%m-%d %H:%M"`] Firefox Ramdisk Synched To HD at Backup>> /var/log/ramdisk_sync.log
 
-	touch $LOCKFILE_LOG
+	touch $LOCKFILE_RAMDISK
 	return 0
 }
 
@@ -164,7 +157,7 @@ do_reload() {
 
 case "$1" in
   start)
-	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC_LOG" "$NAME_LOG"
+	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_start
 	case "$?" in
 		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
@@ -172,7 +165,7 @@ case "$1" in
 	esac
 	;;
   stop)
-	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC_LOG" "$NAME_LOG"
+	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_stop
 	case "$?" in
 		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
@@ -180,15 +173,15 @@ case "$1" in
 	esac
 	;;
   status)
-  	if [ -f $LOCKFILE ]; then
-		echo "$DESC_LOG is running"
+  	if [ -f $LOCKFILE_RAMDISK ]; then
+		echo "$DESC_RAMDISK is running"
 	else
-		echo "$DESC_LOG is stopped"
+		echo "$DESC_RAMDISK is stopped"
 		exit 1
 	fi
 	;;
   reload)
-	log_daemon_msg "Reloading $DESC_LOG" "$NAME_LOG"
+	log_daemon_msg "Reloading $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_reload
 	log_end_msg $?
 	;;
