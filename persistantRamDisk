@@ -38,6 +38,7 @@ MODE_LOG=0755
 
 NAME_FIREFOX=firefoxProfile
 FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
+FIREFOX_CACHE_DIR=cache
 SIZE_FIREFOX=1500M
 MODE_FIREFOX=0700
 
@@ -135,7 +136,7 @@ do_stop() {
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-        rsync -a --quiet --delete --recursive --force $FIREFOX/ $FIREFOXPERM/
+        rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
         rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
         echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched To HDD at Shutdown>> $VARLOGPERM/$NAME_RAMDISK.log
 
@@ -160,7 +161,7 @@ do_reload() {
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-        rsync -a --quiet --delete --recursive --force $FIREFOX/ $FIREFOXPERM/
+        rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
         rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
         echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched Together>> $VARLOG/$NAME_RAMDISK.log
         echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched Together>> $VARLOGPERM/$NAME_RAMDISK.log
