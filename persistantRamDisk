@@ -31,16 +31,21 @@ NAME_RAMDISK=persistentRAMDISK
 DESC_RAMDISK="Persistent RAMDisk manager"
 LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.lock
 
-NAME_LOG=transientlog
+NAME_LOG=RAMDISK_varlog
 VARLOG=/var/log
 SIZE_LOG=500M
 MODE_LOG=0755
 
-NAME_FIREFOX=firefoxProfile
+NAME_FIREFOX=RAMDISK_firefox
 FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
 FIREFOX_CACHE_DIR=cache
 SIZE_FIREFOX=1500M
 MODE_FIREFOX=0700
+
+NAME_HOMECACHE=RAMDISK_homeCache
+HOMECACHE=/home/greg/.cache
+SIZE_HOMECACHE=1000M
+MODE_HOMECACHE=0700
 
 # Read configuration variable file if it is present
 [ -r /etc/default/$NAME_RAMDISK ] && . /etc/default/$NAME_RAMDISK
@@ -66,6 +71,13 @@ if [ -z "$VARLOGPERM" ]; then
 	unset varlog_dir varlog_name
 fi
 
+if [ -z "$HOMECACHEPERM" ]; then
+	homecache_dir=`dirname $HOMECACHE`
+	homecache_name=`basename $HOMECACHE`
+	HOMECACHEPERM="$homecache_dir/$homecache_name"".permanent"
+	unset homecache_dir homecache_name
+fi
+
 
 do_start()
 {
@@ -82,12 +94,14 @@ do_start()
 	# If VARLOG or FIREFOX does not exist?
 	[ -d $FIREFOX ] || return 2
         [ -d $VARLOG ] || return 2
+        [ -d $HOMECACHE ] || return 2
 
 	# VARLOGPERM or FIREFOXPERM either does not exist (first invocation)
 	# or is empty (left from previous invocation).
 	#
 	[ -d $FIREFOXPERM ] || mkdir -p $FIREFOXPERM || return 2
         [ -d $VARLOGPERM ] || mkdir -p $VARLOGPERM || return 2
+        [ -d $HOMECACHE ] || mkdir -p $HOMECACHE || return 2
 
 	# Mount a tmpfs over VARLOG and FIREFOX.
 	# The mount will shadow the current contents of VARLOG and FIREFOX.
@@ -97,28 +111,31 @@ do_start()
 	#
 	mount --bind $FIREFOX $FIREFOXPERM
         mount --bind $VARLOG $VARLOGPERM
+        mount --bind $HOMECACHE $HOMECACHE
 
         mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_FIREFOX,size=$SIZE_FIREFOX $NAME_FIREFOX $FIREFOX
         mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
+        mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_HOMECACHE,size=$SIZE_HOMECACHE $NAME_HOMECACHE $HOMECACHE
 
 	if [ $? -eq 0 ]; then
 		# Populate the FIREFOX's and VARLOG's tmpfs
-		if ( cp -rfp $FIREFOXPERM -T $FIREFOX ) && ( cp -rfp $VARLOGPERM -T $VARLOG ); then
+		if ( cp -rfp $FIREFOXPERM -T $FIREFOX ) && ( cp -rfp $VARLOGPERM -T $VARLOG ) && ( cp -rfp $HOMECACHEPERM -T $HOMECACHE ); then
 	                # Success!
                         touch $LOCKFILE_RAMDISK
-                        echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched To RAM at Boot>> $VARLOG/$NAME_RAMDISK.log
+                        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To RAM at Boot>> $VARLOG/$NAME_RAMDISK.log
                         return 0
 		fi
 
 		# Something went wrong... Rollback the mount
 		umount -l $FIREFOX
                 umount -l $VARLOG
-
+                umount -l $HOMECACHE
 	fi
 
 	# Rollback the directory mangling
 	umount $FIREFOXPERM
         umount $VARLOGPERM
+        umount $HOMECACHE
 
 	return 2
 }
@@ -138,13 +155,16 @@ do_stop() {
 	# Merge back to permanent storage
         rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
         rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
-        echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched To HDD at Shutdown>> $VARLOGPERM/$NAME_RAMDISK.log
+        rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
+        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To HDD at Shutdown>> $VARLOGPERM/$NAME_RAMDISK.log
 
 	# The following cannot fail... or can it?
 	umount -l $FIREFOX
 	umount -l $FIREFOXPERM
         umount -l $VARLOG
 	umount -l $VARLOGPERM
+        umount -l $HOMECACHE
+	umount -l $HOMECACHEPERM
 	rm -f $LOCKFILE_RAMDISK
 	return 0
 }
@@ -163,8 +183,9 @@ do_reload() {
 	# Merge back to permanent storage
         rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
         rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
-        echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched Together>> $VARLOG/$NAME_RAMDISK.log
-        echo [`date +"%Y-%m-%d %H:%M"`] firefox profile and /var/log/ RAMDisks Synched Together>> $VARLOGPERM/$NAME_RAMDISK.log
+        rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
+        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOG/$NAME_RAMDISK.log
+        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOGPERM/$NAME_RAMDISK.log
 
 	touch $LOCKFILE_RAMDISK
 	return 0
