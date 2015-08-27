@@ -9,9 +9,9 @@
 # Default-Start:	2 3 4 5
 # Default-Stop:		0 1 6
 # Short-Description:	Keeps /var/log and firefox profile in RAM
-# Description: Moves the contents of /var/log and ~./.mozilla/firefox/*.profile
-#              to RAM during boot and keeps it there until shutdown/reboot, when
-#              it copies the contents back to permanent storage.
+# Description: Moves the contents of /var/log and ~./.mozilla/firefox/*.profile 
+#              and ~/.cache to RAM during boot and keeps it there until shutdown/reboot, 
+#              when it copies the contents back to permanent storage.
 ### END INIT INFO
 
 # Version 1.0
@@ -28,7 +28,7 @@
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
 NAME_RAMDISK=persistentRAMDISK
-DESC_RAMDISK="Persistent RAMDisk manager"
+DESC_RAMDISK="Persistent RAMDisks manager"
 LOCKFILE_RAMDISK=/var/lock/$NAME_RAMDISK.lock
 
 NAME_LOG=RAMDISK_varlog
@@ -37,7 +37,7 @@ SIZE_LOG=500M
 MODE_LOG=0755
 
 NAME_FIREFOX=RAMDISK_firefox
-FIREFOX=/home/greg/.mozilla/firefox/9vhs47bo.default
+FIREFOX=/home/greg/.mozilla/firefox/yqycbtxk.default
 FIREFOX_CACHE_DIR=cache
 SIZE_FIREFOX=1500M
 MODE_FIREFOX=0700
@@ -46,16 +46,6 @@ NAME_HOMECACHE=RAMDISK_homeCache
 HOMECACHE=/home/greg/.cache
 SIZE_HOMECACHE=1000M
 MODE_HOMECACHE=0700
-
-# Read configuration variable file if it is present
-[ -r /etc/default/$NAME_RAMDISK ] && . /etc/default/$NAME_RAMDISK
-
-# Load the VERBOSE setting and other rcS variables
-. /lib/init/vars.sh
-
-# Define LSB log_* functions.
-# Depend on lsb-base (>= 3.0-6) to ensure that this file is present.
-. /lib/lsb/init-functions
 
 if [ -z "$FIREFOXPERM" ]; then
 	firefox_dir=`dirname $FIREFOX`
@@ -85,7 +75,6 @@ do_start()
 	#   0 if persistentRAMDISK has been started
 	#   1 if persistentRAMDISK was already running
 	#   2 if persistentRAMDISK could not be started
-
 	[ -f $LOCKFILE_RAMDISK ] && return 1
 
 	# Check if I'm root
@@ -93,49 +82,53 @@ do_start()
 
 	# If VARLOG or FIREFOX does not exist?
 	[ -d $FIREFOX ] || return 2
-        [ -d $VARLOG ] || return 2
-        [ -d $HOMECACHE ] || return 2
-
-	# VARLOGPERM or FIREFOXPERM either does not exist (first invocation)
+    [ -d $VARLOG ] || return 2
+    [ -d $HOMECACHE ] || return 2
+  
+	# VARLOGPERM, $HOMECACHE or FIREFOXPERM either does not exist (first invocation)
 	# or is empty (left from previous invocation).
 	#
 	[ -d $FIREFOXPERM ] || mkdir -p $FIREFOXPERM || return 2
-        [ -d $VARLOGPERM ] || mkdir -p $VARLOGPERM || return 2
-        [ -d $HOMECACHE ] || mkdir -p $HOMECACHE || return 2
+    [ -d $VARLOGPERM ] || mkdir -p $VARLOGPERM || return 2
+    [ -d $HOMECACHE ] || mkdir -p $HOMECACHEPERM || return 2
 
-	# Mount a tmpfs over VARLOG and FIREFOX.
+	# Mount a tmpfs over VARLOG, HOMECACHE and FIREFOX.
 	# The mount will shadow the current contents of VARLOG and FIREFOX.
 	# So, before, make a bind mount so that looking into VARLOGPERM and FIREFOXPERM
 	# we'll see the current contents of VARLOG and FIREFOX, which
 	# will not be available anymore as soon as we mount a tmpfs over it.
 	#
 	mount --bind $FIREFOX $FIREFOXPERM
-        mount --bind $VARLOG $VARLOGPERM
-        mount --bind $HOMECACHE $HOMECACHE
+    mount --bind $VARLOG $VARLOGPERM
+    mount --bind $HOMECACHE $HOMECACHEPERM
 
-        mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_FIREFOX,size=$SIZE_FIREFOX $NAME_FIREFOX $FIREFOX
-        mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
-        mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_HOMECACHE,size=$SIZE_HOMECACHE $NAME_HOMECACHE $HOMECACHE
+    mount --make-private $FIREFOXPERM
+    mount --make-private $VARLOGPERM
+    mount --make-private $HOMECACHEPERM
+
+    mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_FIREFOX,size=$SIZE_FIREFOX $NAME_FIREFOX $FIREFOX
+    mount -t tmpfs -o nosuid,noexec,nodev,mode=$MODE_LOG,size=$SIZE_LOG $NAME_LOG $VARLOG
+    mount -t tmpfs -o nosuid,exec,nodev,mode=$MODE_HOMECACHE,size=$SIZE_HOMECACHE $NAME_HOMECACHE $HOMECACHE
 
 	if [ $? -eq 0 ]; then
-		# Populate the FIREFOX's and VARLOG's tmpfs
+		# Populate the FIREFOX's, HOMECACHE's and VARLOG's tmpfs
 		if ( cp -rfp $FIREFOXPERM -T $FIREFOX ) && ( cp -rfp $VARLOGPERM -T $VARLOG ) && ( cp -rfp $HOMECACHEPERM -T $HOMECACHE ); then
-	                # Success!
-                        touch $LOCKFILE_RAMDISK
-                        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To RAM at Boot>> $VARLOG/$NAME_RAMDISK.log
-                        return 0
+	        # Success!
+            touch $LOCKFILE_RAMDISK
+            echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To RAM at Boot>> $VARLOG/$NAME_RAMDISK.log
+            return 0
 		fi
 
 		# Something went wrong... Rollback the mount
 		umount -l $FIREFOX
-                umount -l $VARLOG
-                umount -l $HOMECACHE
+        umount -l $VARLOG
+        umount -l $HOMECACHE
 	fi
 
 	# Rollback the directory mangling
 	umount $FIREFOXPERM
-        umount $VARLOGPERM
-        umount $HOMECACHE
+    umount $VARLOGPERM
+    umount $HOMECACHEPERM
 
 	return 2
 }
@@ -146,27 +139,26 @@ do_stop() {
 	#   1 if daemon was already stopped
 	#   2 if daemon could not be stopped
 	#   other if a failure occurred
-
 	[ -f $LOCKFILE_RAMDISK ] || return 1
 
 	# Check if I am root
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-        rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
-        rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
-        rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
-        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To HDD at Shutdown>> $VARLOGPERM/$NAME_RAMDISK.log
+    rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
+    rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
+    rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
+    echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched To HDD at Shutdown>> $VARLOGPERM/$NAME_RAMDISK.log
 
 	# The following cannot fail... or can it?
 	umount -l $FIREFOX
 	umount -l $FIREFOXPERM
-        umount -l $VARLOG
+    umount -l $VARLOG
 	umount -l $VARLOGPERM
-        umount -l $HOMECACHE
+    umount -l $HOMECACHE
 	umount -l $HOMECACHEPERM
 	rm -f $LOCKFILE_RAMDISK
-	return 0
+	return 1
 }
 
 do_reload() {
@@ -181,11 +173,11 @@ do_reload() {
 	[ `id -u` -eq 0 ] || return 2
 
 	# Merge back to permanent storage
-        rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
-        rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
-        rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
-        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOG/$NAME_RAMDISK.log
-        echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOGPERM/$NAME_RAMDISK.log
+    rsync -a --quiet --delete --recursive --force --exclude $FIREFOX_CACHE_DIR $FIREFOX/ $FIREFOXPERM/
+    rsync -a --quiet --delete --recursive --force $VARLOG/ $VARLOGPERM/
+    rsync -a --quiet --delete --recursive --force $HOMECACHE/ $HOMECACHEPERM/
+    echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOG/$NAME_RAMDISK.log
+    echo [`date +"%Y-%m-%d %H:%M"`] All RAMDisks Synched Together>> $VARLOGPERM/$NAME_RAMDISK.log
 
 	touch $LOCKFILE_RAMDISK
 	return 0
@@ -197,20 +189,10 @@ do_reload() {
 
 case "$1" in
   start)
-	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_start
-	case "$?" in
-		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
-	esac
 	;;
   stop)
-	[ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_stop
-	case "$?" in
-		0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
-		2) [ "$VERBOSE" != no ] && log_end_msg 1 ;;
-	esac
 	;;
   status)
   	if [ -f $LOCKFILE_RAMDISK ]; then
@@ -221,9 +203,7 @@ case "$1" in
 	fi
 	;;
   reload)
-	log_daemon_msg "Reloading $DESC_RAMDISK" "$NAME_RAMDISK"
 	do_reload
-	log_end_msg $?
 	;;
   *)
 	echo "Usage: $0 {start|stop|status|reload}" >&2
